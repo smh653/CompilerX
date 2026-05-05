@@ -53,23 +53,18 @@ router.post('/compile', async (req, res) => {
     const saved = await session.save();
 
     res.json({
-  sessionId: saved._id,
-  phases: {
-    lexical: { tokens, errors: lexicalErrors },
-    syntax: { 
-      parseTree: parseTree, // We are testing ONLY this
-      parseTable: parseTable, 
-      errors: syntaxErrors 
-    },
-    // Send dummy data for the rest to stop the crash
-    semantic: { symbolTable: [], errors: [], annotatedTree: null },
-    ir: { code: [], type: 'TAC' },
-    optimization: { code: [], optimizations: [] },
-    codeGen: { code: [], arch: 'x86-64' }
-  }
-});
+      sessionId: saved._id,
+      phases: {
+        lexical: { tokens, errors: lexicalErrors },
+        syntax: { parseTree, parseTable, errors: syntaxErrors },
+        semantic: { symbolTable, errors: semanticErrors, annotatedTree },
+        ir: { code: intermediateCode, type: irType },
+        optimization: { code: optimizedCode, optimizations },
+        codeGen: { code: targetCode, arch: targetArch }
+      }
+    });
   } catch (err) {
-    console.error(err);
+    console.error("Compilation Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
