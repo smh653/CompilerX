@@ -75,22 +75,28 @@ class SemanticAnalyzer {
       case 'BinaryExpr':  return this.visitBinaryExpr(node);
       case 'UnaryExpr':   return this.visitUnaryExpr(node);
       case 'Identifier':  return this.visitIdentifier(node);
-      case 'Literal':     return { ...node, inferredType: node.kind };
-      case 'GroupExpr':   return { ...node, expr: this.visitNode(node.expr), inferredType: this.visitNode(node.expr)?.inferredType };
-      case 'ExprStmt':    return { ...node, expr: this.visitNode(node.expr) };
+      case 'Literal':     return { ...node, inferredType: node.kind || 'int' }; // Fallback to int
+      case 'GroupExpr':   
+        const inner = this.visitNode(node.body?.[0]); 
+        return { ...node, body: [inner], inferredType: inner?.inferredType };
+      case 'ExprStmt':    return { ...node, body: node.body?.map(c => this.visitNode(c)) };
       default:            return node;
     }
   }
 
   visitProgram(node) {
-    return { ...node, children: node.children.map(c => this.visitNode(c)) };
+    // FIX: Use .body instead of .children to match the Parser
+    const body = node.body ? node.body.map(c => this.visitNode(c)) : [];
+    return { ...node, body };
   }
 
   visitVarDecl(node) {
     if (this.currentScope.symbols[node.name]) {
       this.error(`Variable '${node.name}' already declared in this scope (line ${node.line})`);
     }
-    let init = node.init ? this.visitNode(node.init) : null;
+    // FIX: init is now inside the body array in your parser
+    let init = node.body && node.body.length > 0 ? this.visitNode(node.body[0]) : null;
+    
     if (init && init.inferredType) {
       const expected = node.varType;
       const actual = init.inferredType;
@@ -99,7 +105,7 @@ class SemanticAnalyzer {
       }
     }
     this.currentScope.define(node.name, { type: node.varType, initialized: !!init, line: node.line });
-    return { ...node, init, inferredType: node.varType };
+    return { ...node, body: init ? [init] : [], inferredType: node.varType };
   }
 
   visitAssignStmt(node) {
@@ -107,62 +113,70 @@ class SemanticAnalyzer {
     if (!sym) {
       this.error(`Undeclared variable '${node.name}' (line ${node.line})`);
     }
-    const value = this.visitNode(node.value);
+    // FIX: assignment value is now inside the body array
+    const value = node.body && node.body.length > 0 ? this.visitNode(node.body[0]) : null;
+    
     if (sym && value?.inferredType) {
       if (!TYPE_COMPAT[sym.type]?.includes(value.inferredType)) {
         this.error(`Type mismatch: cannot assign '${value.inferredType}' to '${sym.type}' '${node.name}' (line ${node.line})`);
       }
     }
-    if (sym) this.currentScope.lookup(node.name).initialized = true;
-    return { ...node, value, inferredType: sym?.type };
+    if (sym) sym.initialized = true;
+    return { ...node, body: value ? [value] : [], inferredType: sym?.type };
   }
 
   visitIfStmt(node) {
     const condition = this.visitNode(node.condition);
-    if (condition?.inferredType && condition.inferredType !== 'bool' && condition.inferredType !== 'int') {
+    if (condition?.inferredType && !['bool', 'int'].includes(condition.inferredType)) {
       this.error(`If condition must be boolean/int, got '${condition.inferredType}' (line ${node.line})`);
     }
+    
+    // Parser sends branches in the body array
     this.enterScope(`if_then_line${node.line}`);
-    const thenBranch = this.visitNode(node.thenBranch);
+    const thenBranch = node.body?.[0] ? this.visitNode(node.body[0]) : null;
     this.exitScope();
+
     let elseBranch = null;
-    if (node.elseBranch) {
+    if (node.body?.[1]) {
       this.enterScope(`if_else_line${node.line}`);
-      elseBranch = this.visitNode(node.elseBranch);
+      elseBranch = this.visitNode(node.body[1]);
       this.exitScope();
     }
-    return { ...node, condition, thenBranch, elseBranch };
+    
+    return { ...node, condition, body: elseBranch ? [thenBranch, elseBranch] : [thenBranch] };
   }
 
   visitWhileStmt(node) {
     const condition = this.visitNode(node.condition);
-    if (condition?.inferredType && condition.inferredType !== 'bool' && condition.inferredType !== 'int') {
+    if (condition?.inferredType && !['bool', 'int'].includes(condition.inferredType)) {
       this.error(`While condition must be boolean/int, got '${condition.inferredType}' (line ${node.line})`);
     }
     this.enterScope(`while_line${node.line}`);
-    const body = this.visitNode(node.body);
+    const bodyNode = node.body?.[0] ? this.visitNode(node.body[0]) : null;
     this.exitScope();
-    return { ...node, condition, body };
+    return { ...node, condition, body: [bodyNode] };
   }
 
   visitReturnStmt(node) {
-    const value = node.value ? this.visitNode(node.value) : null;
-    return { ...node, value };
+    const value = node.body?.[0] ? this.visitNode(node.body[0]) : null;
+    return { ...node, body: value ? [value] : [] };
   }
 
   visitPrintStmt(node) {
-    const value = this.visitNode(node.value);
-    return { ...node, value };
+    const value = node.body?.[0] ? this.visitNode(node.body[0]) : null;
+    return { ...node, body: [value] };
   }
 
   visitBlock(node) {
-    const body = node.body.map(s => this.visitNode(s));
+    const body = node.body ? node.body.map(s => this.visitNode(s)) : [];
     return { ...node, body };
   }
 
   visitBinaryExpr(node) {
-    const left = this.visitNode(node.left);
-    const right = this.visitNode(node.right);
+    // FIX: body contains left/right
+    const left = node.body?.[0] ? this.visitNode(node.body[0]) : null;
+    const right = node.body?.[1] ? this.visitNode(node.body[1]) : null;
+    
     let inferredType = 'int';
     const lType = left?.inferredType;
     const rType = right?.inferredType;
@@ -178,11 +192,11 @@ class SemanticAnalyzer {
     } else if (['==', '!=', '<', '>', '<=', '>=', '&&', '||'].includes(node.op)) {
       inferredType = 'bool';
     }
-    return { ...node, left, right, inferredType };
+    return { ...node, body: [left, right], inferredType };
   }
 
   visitUnaryExpr(node) {
-    const operand = this.visitNode(node.operand);
+    const operand = node.body?.[0] ? this.visitNode(node.body[0]) : null;
     let inferredType = operand?.inferredType;
     if (node.op === '!') {
       if (inferredType !== 'bool' && inferredType !== 'int') {
@@ -190,7 +204,7 @@ class SemanticAnalyzer {
       }
       inferredType = 'bool';
     }
-    return { ...node, operand, inferredType };
+    return { ...node, body: [operand], inferredType };
   }
 
   visitIdentifier(node) {

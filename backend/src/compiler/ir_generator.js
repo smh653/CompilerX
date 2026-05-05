@@ -20,37 +20,44 @@ class TACGenerator {
   visitNode(node) {
     if (!node) return null;
     switch (node.type) {
-      case 'Program':    return this.visitProgram(node);
-      case 'VarDecl':    return this.visitVarDecl(node);
-      case 'AssignStmt': return this.visitAssignStmt(node);
-      case 'IfStmt':     return this.visitIfStmt(node);
-      case 'WhileStmt':  return this.visitWhileStmt(node);
-      case 'ReturnStmt': return this.visitReturnStmt(node);
-      case 'PrintStmt':  return this.visitPrintStmt(node);
-      case 'Block':      return this.visitBlock(node);
-      case 'BinaryExpr': return this.visitBinaryExpr(node);
-      case 'UnaryExpr':  return this.visitUnaryExpr(node);
-      case 'Literal':    return String(node.value);
-      case 'Identifier': return node.name;
-      case 'GroupExpr':  return this.visitNode(node.expr);
-      case 'ExprStmt':   return this.visitNode(node.expr);
-      default:           return null;
+      case 'Program':     return this.visitProgram(node);
+      case 'VarDecl':     return this.visitVarDecl(node);
+      case 'AssignStmt':  return this.visitAssignStmt(node);
+      case 'IfStmt':      return this.visitIfStmt(node);
+      case 'WhileStmt':   return this.visitWhileStmt(node);
+      case 'ReturnStmt':  return this.visitReturnStmt(node);
+      case 'PrintStmt':   return this.visitPrintStmt(node);
+      case 'Block':       return this.visitBlock(node);
+      case 'BinaryExpr':  return this.visitBinaryExpr(node);
+      case 'UnaryExpr':   return this.visitUnaryExpr(node);
+      case 'Literal':     return String(node.value);
+      case 'Identifier':  return node.name;
+      case 'GroupExpr':   return this.visitNode(node.body?.[0]);
+      case 'ExprStmt':    return this.visitNode(node.body?.[0]);
+      default:            return null;
     }
   }
 
   visitProgram(node) {
     this.emit('# --- BEGIN PROGRAM ---');
-    node.children.forEach(c => this.visitNode(c));
+    // FIX: Use .body instead of .children
+    if (node.body) {
+      node.body.forEach(c => this.visitNode(c));
+    }
     this.emit('# --- END PROGRAM ---');
   }
 
   visitBlock(node) {
-    node.body.forEach(s => this.visitNode(s));
+    if (node.body) {
+      node.body.forEach(s => this.visitNode(s));
+    }
   }
 
   visitVarDecl(node) {
-    if (node.init) {
-      const rhs = this.visitNode(node.init);
+    // FIX: init is the first child in the body array
+    const initNode = node.body?.[0];
+    if (initNode) {
+      const rhs = this.visitNode(initNode);
       this.emit(`${node.name} = ${rhs}`);
     } else {
       this.emit(`${node.name} = 0  # declare ${node.varType}`);
@@ -58,7 +65,9 @@ class TACGenerator {
   }
 
   visitAssignStmt(node) {
-    const rhs = this.visitNode(node.value);
+    // FIX: value is the first child in the body array
+    const valNode = node.body?.[0];
+    const rhs = this.visitNode(valNode);
     if (node.op === '=') {
       this.emit(`${node.name} = ${rhs}`);
     } else {
@@ -72,15 +81,20 @@ class TACGenerator {
   visitIfStmt(node) {
     const cond = this.visitNode(node.condition);
     const elseLabel = this.newLabel();
-    const endLabel = node.elseBranch ? this.newLabel() : elseLabel;
+    
+    // FIX: branches are in the body array
+    const thenBranch = node.body?.[0];
+    const elseBranch = node.body?.[1];
+    
+    const endLabel = elseBranch ? this.newLabel() : elseLabel;
 
     this.emit(`if_false ${cond} goto ${elseLabel}`);
-    this.visitNode(node.thenBranch);
+    this.visitNode(thenBranch);
 
-    if (node.elseBranch) {
+    if (elseBranch) {
       this.emit(`goto ${endLabel}`);
       this.emit(`${elseLabel}:`);
-      this.visitNode(node.elseBranch);
+      this.visitNode(elseBranch);
       this.emit(`${endLabel}:`);
     } else {
       this.emit(`${elseLabel}:`);
@@ -94,14 +108,18 @@ class TACGenerator {
     this.emit(`${startLabel}:`);
     const cond = this.visitNode(node.condition);
     this.emit(`if_false ${cond} goto ${endLabel}`);
-    this.visitNode(node.body);
+    
+    // FIX: body is the first child in the body array
+    this.visitNode(node.body?.[0]);
+    
     this.emit(`goto ${startLabel}`);
     this.emit(`${endLabel}:`);
   }
 
   visitReturnStmt(node) {
-    if (node.value) {
-      const val = this.visitNode(node.value);
+    const valNode = node.body?.[0];
+    if (valNode) {
+      const val = this.visitNode(valNode);
       this.emit(`return ${val}`);
     } else {
       this.emit('return');
@@ -109,20 +127,21 @@ class TACGenerator {
   }
 
   visitPrintStmt(node) {
-    const val = this.visitNode(node.value);
+    const val = this.visitNode(node.body?.[0]);
     this.emit(`print ${val}`);
   }
 
   visitBinaryExpr(node) {
-    const left = this.visitNode(node.left);
-    const right = this.visitNode(node.right);
+    // FIX: left and right are in the body array[cite: 1]
+    const left = this.visitNode(node.body?.[0]);
+    const right = this.visitNode(node.body?.[1]);
     const tmp = this.newTemp();
     this.emit(`${tmp} = ${left} ${node.op} ${right}`);
     return tmp;
   }
 
   visitUnaryExpr(node) {
-    const operand = this.visitNode(node.operand);
+    const operand = this.visitNode(node.body?.[0]);
     const tmp = this.newTemp();
     this.emit(`${tmp} = ${node.op}${operand}`);
     return tmp;

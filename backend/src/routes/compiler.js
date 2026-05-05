@@ -53,21 +53,21 @@ router.post('/compile', async (req, res) => {
     const saved = await session.save();
 
     res.json({
-      sessionId: saved._id,
-      phases: {
-        lexical: { tokens, errors: lexicalErrors },
-        // Ensure the frontend is getting what it expects
-        syntax: { 
-          parseTree: parseTree, // This object MUST contain the 'body' array
-          parseTable: parseTable, 
-          errors: syntaxErrors 
-        },
-        semantic: { symbolTable, errors: semanticErrors, annotatedTree },
-        ir: { code: intermediateCode, type: irType },
-        optimization: { code: optimizedCode, optimizations },
-        codeGen: { code: targetCode, arch: targetArch }
-      }
-    });
+  sessionId: saved._id,
+  phases: {
+    lexical: { tokens, errors: lexicalErrors },
+    syntax: { 
+      parseTree: parseTree, // We are testing ONLY this
+      parseTable: parseTable, 
+      errors: syntaxErrors 
+    },
+    // Send dummy data for the rest to stop the crash
+    semantic: { symbolTable: [], errors: [], annotatedTree: null },
+    ir: { code: [], type: 'TAC' },
+    optimization: { code: [], optimizations: [] },
+    codeGen: { code: [], arch: 'x86-64' }
+  }
+});
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });

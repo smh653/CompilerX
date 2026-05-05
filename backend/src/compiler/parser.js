@@ -93,18 +93,31 @@ class Parser {
     return this.advance();
   }
 
-  parseProgram() {
-    const node = { type: 'Program', children: [], line: 1 };
+  // Replace your parseProgram in backend/src/compiler/parser.js
+parseProgram() {
+    // Ensure the root node uses 'body' as an array
+    const node = { type: 'Program', body: [], line: 1 };
     while (this.peek().type !== 'EOF') {
       try {
-        node.children.push(this.parseStatement());
+        node.body.push(this.parseStatement());
       } catch (e) {
         this.errors.push(e.message);
-        this.advance(); // error recovery
+        this.advance(); 
       }
     }
     return node;
-  }
+}
+
+// Ensure other nodes like 'Block' also use 'body'
+parseBlock() {
+    this.expect('DELIMITER', '{');
+    const stmts = [];
+    while (this.peek().value !== '}' && this.peek().type !== 'EOF') {
+        stmts.push(this.parseStatement());
+    }
+    this.expect('DELIMITER', '}');
+    return { type: 'Block', body: stmts };
+}
 
   parseStatement() {
     const t = this.peek();
