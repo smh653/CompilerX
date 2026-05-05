@@ -1,61 +1,82 @@
-import React, { useState } from 'react';
+import React, { useMemo } from 'react';
+import Tree from 'react-d3-tree';
 
 export default function ParseTreeView({ node }) {
-  if (!node) return <div className="empty-tree">No tree data</div>;
-  return (
-    <div className="tree-root">
-      <TreeNode node={node} />
-    </div>
-  );
-}
+  // Transformation helper to convert 'body' to 'children' and sanitize values
+  const transformData = (n) => {
+    if (!n) return null;
 
-function TreeNode({ node }) {
-  const [isOpen, setIsOpen] = useState(true);
-  
-  // Standardize children access
-  const children = Array.isArray(node?.body) 
-    ? node.body 
-    : (node?.children && Array.isArray(node.children)) 
-      ? node.children 
-      : [];
+    // Safety: Extract only strings/numbers for the 'name' property
+    // This prevents the "Objects are not valid as React child" error
+    const label = typeof n.type === 'string' ? n.type : 'Node';
+    
+    // Determine the subtitle/value (e.g., variable name or literal value)
+    let val = '';
+    if (typeof n.name === 'string') val = n.name;
+    else if (typeof n.value !== 'object' && n.value !== undefined) val = String(n.value);
 
-  const hasBody = children.length > 0;
-
-  // Helper: Ensures we only try to render strings, numbers, or booleans
-  const getSafeValue = (val) => {
-    if (val === null || val === undefined) return null;
-    if (typeof val === 'object') return val.name || val.value || null; 
-    return String(val);
+    return {
+      name: label,
+      attributes: {
+        info: val,
+        type: typeof n.inferredType === 'string' ? n.inferredType : ''
+      },
+      // Recursively transform children from the 'body' array
+      children: Array.isArray(n.body) 
+        ? n.body.map(transformData).filter(Boolean) 
+        : []
+    };
   };
 
-  const safeName = getSafeValue(node?.name);
-  const safeValue = getSafeValue(node?.value);
-  const safeType = getSafeValue(node?.inferredType);
+  const treeData = useMemo(() => transformData(node), [node]);
+
+  if (!treeData) return <div className="empty-tree">No tree data</div>;
 
   return (
-    <div className="tree-node">
-      <div className="node-info" onClick={() => setIsOpen(!isOpen)}>
-        {hasBody && <span className="toggle-icon">{isOpen ? '▼' : '▶'}</span>}
-        <span className="node-type">{node?.type || 'Node'}</span>
-        
-        {safeName && <span className="node-name"> {safeName}</span>}
-        
-        {safeValue !== null && <span className="node-value"> : {safeValue}</span>}
-
-        {safeType && (
-          <span className="node-type-pill" style={{ marginLeft: '8px', opacity: 0.7 }}>
-            [{safeType}]
-          </span>
-        )}
-      </div>
-      
-      {isOpen && hasBody && (
-        <div className="node-body" style={{ paddingLeft: '20px' }}>
-          {children.map((child, index) => (
-            child ? <TreeNode key={index} node={child} /> : null
-          ))}
-        </div>
-      )}
+    <div className="tree-container" style={{ width: '100%', height: '600px', background: '#1a1a1a' }}>
+      <Tree 
+        data={treeData}
+        orientation="vertical"
+        pathFunc="step" // Gives those sharp 90-degree angles from your sample
+        translate={{ x: 300, y: 50 }}
+        nodeSize={{ x: 200, y: 120 }}
+        separation={{ siblings: 1.5, nonSiblings: 2 }}
+        renderCustomNodeElement={renderCustomNode}
+      />
     </div>
   );
 }
+
+// Custom SVG renderer to match the look of image_1241f7.png
+const renderCustomNode = ({ nodeDatum, toggleNode }) => (
+  <g>
+    {/* The main circular node */}
+    <circle r="20" fill="#FA8112" stroke="#fff" strokeWidth="2" onClick={toggleNode} />
+    
+    {/* Node Type (e.g., Program, VarDecl) */}
+    <text 
+      fill="#ffffff" 
+      x="25" 
+      y="5" 
+      fontSize="14" 
+      fontWeight="bold" 
+      style={{ paintOrder: 'stroke', stroke: '#1a1a1a', strokeWidth: '3px' }}
+    >
+      {nodeDatum.name}
+    </text>
+
+    {/* The specific value (e.g., 'x' or '10') */}
+    {nodeDatum.attributes?.info && (
+      <text fill="#a8ff78" x="25" y="22" fontSize="12">
+        {nodeDatum.attributes.info}
+      </text>
+    )}
+    
+    {/* The inferred type from Semantic Analysis */}
+    {nodeDatum.attributes?.type && (
+      <text fill="#5bc8f5" x="25" y="36" fontSize="11" fontStyle="italic">
+        ({nodeDatum.attributes.type})
+      </text>
+    )}
+  </g>
+);
