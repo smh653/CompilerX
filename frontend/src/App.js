@@ -47,7 +47,9 @@ export default function App() {
   const compile = async () => {
     setLoading(true);
     setError(null);
+    setResult(null); // Clear previous result to prevent old data from crashing new renders
     setAnimating(true);
+    // ... rest of your fetch code
     try {
       const res = await fetch('/api/compile', {
         method: 'POST',

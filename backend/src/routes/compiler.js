@@ -56,7 +56,12 @@ router.post('/compile', async (req, res) => {
       sessionId: saved._id,
       phases: {
         lexical: { tokens, errors: lexicalErrors },
-        syntax: { parseTree, parseTable, errors: syntaxErrors },
+        // Ensure the frontend is getting what it expects
+        syntax: { 
+          parseTree: parseTree, // This object MUST contain the 'body' array
+          parseTable: parseTable, 
+          errors: syntaxErrors 
+        },
         semantic: { symbolTable, errors: semanticErrors, annotatedTree },
         ir: { code: intermediateCode, type: irType },
         optimization: { code: optimizedCode, optimizations },
